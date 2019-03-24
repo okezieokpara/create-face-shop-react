@@ -4,12 +4,13 @@ import {ProductGrid} from './components/productGrid';
 import {DropSelect} from './components/dropSelect';
 import {ButtonGroup} from './components/buttonGroup';
 import {Footer} from './components/footer';
+import {Config} from './config';
 import './assets/css/styles.css';
 
 class App extends Component {
   constructor(props) {
     super(props);
-    this.state = {isLoading: false, products: [], productChunks: [], pagination: {currentPage: 1, currentCount: 0, totalCount: 0, isLoading: true, isFetching: false, pageSize: 50, isLastPage: false}, adIndices: [], sortParms: {sortProp: 'size', sortDirection: 'ASC'}};
+    this.state = {isLoading: false, products: [], productChunks: [], loadingText: 'loading products...', errorText: '', isError: false, pagination: {currentPage: 1, currentCount: 0, totalCount: 0, isLoading: true, isFetching: false, pageSize: 50, isLastPage: false}, adIndices: [], sortParms: {sortProp: 'size', sortDirection: 'ASC'}};
 
     this.fetchProducts = this.fetchProducts.bind(this);
     this.handleSortPropChange = this.handleSortPropChange.bind(this);
@@ -51,10 +52,10 @@ class App extends Component {
             <div className="col-md-12">
               <div className="album py-5 bg-light">
                 <div className="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
-                  <p>Currently displaying {this.state.pagination.currentCount} of {this.state.pagination.totalCount} products</p>
+                  <p>Currently displaying {this.state.pagination.currentCount || 0} of {this.state.pagination.totalCount || 0} products</p>
                   <div className="btn-toolbar mb-2 mb-md-0">
 
-                    <ButtonGroup options={[{title: 'ASC', onSelect: () => this.handleSortDirectionChange('asc')}, {title: 'DESC', isDisabled: true}]}/>
+                    <ButtonGroup options={[{title: 'ASC', onSelect: () => this.handleSortDirectionChange('asc')}, {title: 'DESC', onSelect: () => this.handleSortDirectionChange('desc')}]}/>
                     <DropSelect label="Page size" items={[{title: '20', onSelect: () => this.handlePageSizeChange(20)}, {title: '50', onSelect: () => this.handlePageSizeChange(50)}, {title: '100', onSelect: () => this.handlePageSizeChange(100)}]} defaultSelectedIndex={1}/>
                     <DropSelect label="Sort by" items={[{title: 'size', onSelect: () => this.handleSortPropChange('size')}, {title: 'price', onSelect: () => this.handleSortPropChange('price')}, {title: 'id', onSelect: () => this.handleSortPropChange('id')}]}/>
                   </div>
@@ -73,15 +74,16 @@ class App extends Component {
                           </div>
                         ), (
                           <div key={1} className="mb-4 box-shadow">
-                              <aside>
+                            <aside>
                               <p>But first, a word from our sponsors:</p>
-                              <img className="ad" style={{width: '320', height: '200'}} src={`http://localhost:3000/ads/?r=${this.state.adIndices[idx]}/`}/>
+                              <img className="ad" style={{width: '320', height: '200'}} src={`${Config.serverHostname}/ads/?r=${this.state.adIndices[idx]}/`}/>
                             </aside>
-                            </div>)];
+                          </div>)];
                       })
                       }
                     </div>)}
-                  {this.state.isFetching && (<p className="text-center">Loading...</p>)}
+                  {this.state.isFetching && (<p className="text-center">{this.state.loadingText}</p>)}
+                  {this.state.isError && (<p className="text-center">{this.state.errorText}</p>)}
                   {this.state.pagination.isLastPage && (<p className="text-center">~ end of catalogue ~</p>)}
                 </div>
               </div>
@@ -102,32 +104,43 @@ class App extends Component {
       }
     }
   }
+
   fetchProducts(isMore) {
     if (!isMore) {
       this.setState({isLoading: true});
+      // Todo: Remove the from production
+      // Adds delay here just to show it is loading
+      setTimeout(() => {
+      }, 1000);
     }
     this.setState({isFetching: true}); // The difference between isFetching and isLoading is that: while isLoading there is no data to display, but while isFetching we already have some local data but we are fetching more
-  
-    const fecthFromEnpoint = () => {
-      const productsEndpoint = `http://localhost:3000/api/products?_page=${this.state.pagination.currentPage}&_limit=${this.state.pagination.pageSize}&_sort=${this.state.sortParms.sortProp}&_order=${this.state.sortParms.sortDirection}`;
-      return fetch(productsEndpoint);
-    };
-    fecthFromEnpoint().then(res => {
+    const productsEndpoint = `${Config.serverHostname}/products?_page=${this.state.pagination.currentPage}&_limit=${this.state.pagination.pageSize}&_sort=${this.state.sortParms.sortProp}&_order=${this.state.sortParms.sortDirection}`;
+    fetch(productsEndpoint).then(res => {
       const totalProducts = parseInt(res.headers.get('X-Total-Count'), 10);
-  
-      res.json().then(data => {
-        const prods = isMore ? this.state.products.concat(Array.from(data)) : Array.from(data); // if we are loading more, then join with already existing products
+      if (res.ok) {
+        res.json().then(data => {
+          const prods = isMore ? this.state.products.concat(Array.from(data)) : Array.from(data); // if we are loading more, then join with already existing products
 
-        this.setState({pagination: {...this.state.pagination, currentCount: prods.length, isLoading: false, totalCount: totalProducts, currentPage: this.state.pagination.currentPage + 1}, isLoading: false, isFetching: false, productChunks: this.chunkArray(prods, 20), products: prods}); // Always remeber to set state in a non immutable way
-        const set = new Set(); // this uses a set to only make sure that unique values are passed into the array
-        while (set.size < this.state.productChunks.length) {
-          set.add(Math.floor(Math.random() * 1000));
-        }
-        const checkLastPage = this.isLastPage(this.state.pagination.currentPage, this.state.pagination.pageSize, this.state.pagination.totalCount);
-        this.setState({adIndices: [...set], pagination: {...this.state.pagination, isLastPage: checkLastPage}});
-      });
+          this.setState({pagination: {...this.state.pagination, currentCount: prods.length, isLoading: false, totalCount: totalProducts, currentPage: this.state.pagination.currentPage + 1}, isLoading: false, isFetching: false, productChunks: this.chunkArray(prods, 20), products: prods}); // Always remeber to set state in a non immutable way
+          const set = new Set(); // this uses a set to only make sure that unique values are passed into the array
+          while (set.size < this.state.productChunks.length) {
+            set.add(Math.floor(Math.random() * 1000));
+          }
+          const checkLastPage = this.isLastPage(this.state.pagination.currentPage, this.state.pagination.pageSize, this.state.pagination.totalCount);
+
+          this.setState({adIndices: [...set], pagination: {...this.state.pagination, isLastPage: checkLastPage}});
+        });
+      } else {
+        throw Error(`There was an error with the request ${res.status}`);
+      }
+    }).catch(ex => {
+      this.setState({isFetching: false, isLoading: false, isError: true, errorText: 'There was an error loading products'});
+      console.log('Failed', ex);
+    }).finally(() => {
+      console.log('finally');
     });
   }
+
   isLastPage(currentPage, pageSize, totalCount) {
     const numberOfPages = totalCount / pageSize;
     return currentPage >= numberOfPages;
@@ -155,7 +168,7 @@ class App extends Component {
     const firstProps = Object.getOwnPropertyNames(first);
     const secondProps = Object.getOwnPropertyNames(second);
 
-    if (firstProps.length != secondProps.length) {
+    if (firstProps.length !== secondProps.length) {
       return false;
     }
     for (let i = 0; i < firstProps.length; i++) {
