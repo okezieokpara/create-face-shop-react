@@ -6,7 +6,7 @@ React.
 
 
 
-[Here]("../questions.md") is the original question
+[Here](questions.md) is the original question
 based on Create React App.
 
 To run this app, first clone the repository on your local machine. Then run the
